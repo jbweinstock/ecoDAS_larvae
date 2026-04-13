@@ -129,3 +129,16 @@ data_chunk7_sub2 = subset(data_chunk7_sub,
 
 #write.csv(data_chunk7_sub2,file="OBIS_animals_2023-MAR2026.csv")
 
+data_chunk8 = occurrence(flags = "NO_DEPTH") # 72,119,118 records
+
+data_chunk8_sub = subset(data_chunk8, 
+                         data_chunk8$marine==T & 
+                           data_chunk8$kingdom == "Animalia" & 
+                           data_chunk8$shoredistance > 0 & 
+                           data_chunk8$shoredistance < 500000 & 
+                           data_chunk8$bathymetry < 100)
+
+data_chunk8_sub2 = subset(data_chunk8_sub, 
+                          data_chunk8_sub$phylum != "Chordata" |
+                            data_chunk8_sub$superclass == "Pisces")
+
