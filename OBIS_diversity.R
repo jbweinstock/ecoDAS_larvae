@@ -1,6 +1,6 @@
 ## Combine + synthesize coastal OBIS data
 ## Date created: 23 Mar 2026
-## Date updated: 26 Mar 2026
+## Date updated: 13 Apr 2026
 
 
 # code modified from: https://iobis.github.io/notebook-diversity-indicators/
@@ -16,14 +16,15 @@ library(rnaturalearth) # mapping
 library(rnaturalearthdata) # mapping
 library(viridis)
 library(ggplot2)
-library(rgdal)
+#library(rgdal)
+library("worrms") # access WoRMS
 
 
-test <- open_dataset("OBIS_animals/",format = "csv") %>%
-  select(decimalLongitude, decimalLatitude, date_year) %>%
-  group_by(decimalLongitude, decimalLatitude) %>%
-  collect() %>%
-  summarize(min_year = min(date_year),max_year = max(date_year))
+# test <- open_dataset("OBIS_animals/",format = "csv") %>%
+#   select(decimalLongitude, decimalLatitude, date_year) %>%
+#   group_by(decimalLongitude, decimalLatitude) %>%
+#   collect() %>%
+#   summarize(min_year = min(date_year),max_year = max(date_year))
 
 
 occ <- open_dataset("OBIS_animals/",format = "csv") %>%
@@ -32,6 +33,27 @@ occ <- open_dataset("OBIS_animals/",format = "csv") %>%
   collect() %>%
   summarize(records = n())
 
+Chaudhary_df = read.csv("occurence_records.csv")
+Chaudhary_df_spp = Chaudhary_df[!duplicated(Chaudhary_df$ValidName),]
+Chaudhary_df_spp_small = as.data.frame(Chaudhary_df_spp$ValidName)
+colnames(Chaudhary_df_spp_small) = c("ValidName")
+Chaudhary_df_spp_small$ourclass = Chaudhary_df_spp$ourclass
+
+# test = merge(occ, Chaudhary_df_spp_small, 
+#              by.x = "species", by.y = "ValidName", all.x=TRUE)
+# 
+# test_spp = test[!duplicated(test$species),]
+# 
+# test_spp$status = NA
+# for(i in 1:length(test_spp$status)){
+#   tryCatch({
+#     test_spp$status[i] = wm_records_name(test_spp$species[i],fuzzy=FALSE)$status
+#   },
+#   error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+# }
+#
+#write.csv(test_spp,file="OBIS_animals/species_status.csv")
+
 # Create an ISEA discrete global grid using the dggridR package
 dggs <- dgconstruct(projection = "ISEA", topology = "HEXAGON", res = 8)
 
@@ -39,18 +61,18 @@ dggs <- dgconstruct(projection = "ISEA", topology = "HEXAGON", res = 8)
 
 # assign cell numbers to the occurrence data -- replaced dgtransform with dgGEO_to_SEQNUM
 occ$cell <- dgGEO_to_SEQNUM(dggs, occ$decimalLongitude,occ$decimalLatitude)$seqnum
-test$cell <- dgGEO_to_SEQNUM(dggs,test$decimalLongitude,test$decimalLatitude)$seqnum
+#test$cell <- dgGEO_to_SEQNUM(dggs,test$decimalLongitude,test$decimalLatitude)$seqnum
 
 
 # calculate the number of records, species richness, Simpson index, 
 #   Shannon index, Hurlbert index (n = 50), and Hill numbers for each cell
 
-calc <- function(df, esn = 50) {
+calc <- function(df, esn = 50) {  #defaults to ES50
   t1 <- df %>%
-    group_by(cell, species) %>%
+    group_by(cell, species) %>%   #add up number of records for each species through time
     summarize(ni = sum(records))
   t2 <- t1 %>%
-    group_by(cell) %>%
+    group_by(cell) %>%   #calculate total number species and records / cell
     mutate(n = sum(ni))
   t3 <- t2 %>%
     group_by(cell, species) %>%
@@ -91,9 +113,9 @@ occ_noNA = subset(occ, occ$species != "NA")
 metrics <- occ_noNA %>%
   calc(50)
 
-test <- test %>%
-  group_by(cell) %>%
-  summarize(min_year = min(min_year),max_year = max(max_year))
+#test <- test %>%
+#  group_by(cell) %>%
+#  summarize(min_year = min(min_year),max_year = max(max_year))
 
 # add cell geometries to the metrics table
 grid <- dgearthgrid(dggs) #, frame = FALSE, wrapcells = FALSE)
@@ -136,10 +158,12 @@ ggplot() +
   coord_sf()
 
 ggplot() +
-  geom_sf(data = metrics, aes_string(fill = "shannon", geometry = "geometry"),lwd = 0,col=NA) +
+  geom_sf(data = metrics, aes_string(fill = "es", col="es", geometry = "geometry"),lwd = 0.04) +
   scale_fill_viridis(option = "inferno", begin = 0.1,#trans = "log10",
-                     na.value = "white", name = "Shannon index") +
-  geom_sf(data = world, fill = "black", color = NA) +
+                     na.value = "white", name = "ES50") +
+  scale_colour_viridis(option = "inferno", begin = 0.1,#trans = "log10",
+                     na.value = "white", name = "ES50") +
+  geom_sf(data = world, fill = "#dddddd", color = "#666666", lwd = 0.1) +
   theme(panel.grid.major.x = element_blank(), 
         panel.grid.major.y = element_blank(), 
         panel.grid.minor.x = element_blank(), 
@@ -154,5 +178,46 @@ ggplot() +
         axis.title.y = element_blank()) + xlab("") + ylab("") +
  # coord_sf()
  coord_sf(crs = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
+
+plot(x=log(metrics$n), y=metrics$es)
+
+
+
+ggplot() +
+  geom_sf(data = metrics, aes_string(fill = "n", color = "n", geometry = "geometry"), lwd = 0.04) +
+  scale_color_viridis(option = "inferno", na.value = "white", name = "Number of records", trans = "log10") +
+  scale_fill_viridis(option = "inferno", na.value = "white", name = "Number of records", trans = "log10") +
+  geom_sf(data = world, fill = "#dddddd", color = "#666666", lwd = 0.1) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.minor.y = element_blank(), 
+    panel.background = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.position = "bottom"
+  ) +
+  xlab("") + ylab("") +
+  coord_sf(crs = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" )
+
+
+
+
+ggplot(data = metrics, aes_string(x = "n")) + 
+  geom_histogram() + 
+  scale_x_log10(breaks = c(50,200,1000,10000)) + 
+  geom_vline(xintercept = 50) + 
+  theme_bw() + 
+  ggtitle("Distribution of records")
+
+
+
+
+
+
 
 
