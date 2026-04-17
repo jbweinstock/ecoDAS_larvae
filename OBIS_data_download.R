@@ -1,6 +1,6 @@
 ## Download + subset global OBIS data
 ## Date created: 10 Mar 2026
-## Date updated: 23 Mar 2026
+## Date updated: 17 Apr 2026
 
 
 # download global OBIS data for <100 m (in 1-10 GB chunks, subset by year)
@@ -129,7 +129,10 @@ data_chunk7_sub2 = subset(data_chunk7_sub,
 
 #write.csv(data_chunk7_sub2,file="OBIS_animals_2023-MAR2026.csv")
 
-data_chunk8 = occurrence(flags = "NO_DEPTH") # 72,119,118 records
+data_chunk8 = occurrence(flags = "NO_DEPTH", verbose = T,
+                         enddate = "2000-12-31") # 20,352,136 of 72,119,118 records
+
+#write.csv(data_chunk8,file="OBIS_data_depthless_1900-2000.csv")
 
 data_chunk8_sub = subset(data_chunk8, 
                          data_chunk8$marine==T & 
@@ -141,4 +144,70 @@ data_chunk8_sub = subset(data_chunk8,
 data_chunk8_sub2 = subset(data_chunk8_sub, 
                           data_chunk8_sub$phylum != "Chordata" |
                             data_chunk8_sub$superclass == "Pisces")
+
+#write.csv(data_chunk8_sub2,file="OBIS_animals_depthless_1900-2000.csv")
+
+
+data_chunk9 = occurrence(flags = "NO_DEPTH", verbose = T,   # 14,415,611 of 72,119,118 records
+                         startdate = "2001-01-01", enddate = "2010-12-31") 
+
+#write.csv(data_chunk9,file="OBIS_data_depthless_2001-2010.csv")
+
+data_chunk9_sub = subset(data_chunk9, 
+                         data_chunk9$marine==T & 
+                           data_chunk9$kingdom == "Animalia" & 
+                           data_chunk9$shoredistance > 0 & 
+                           data_chunk9$shoredistance < 500000 & 
+                           data_chunk9$bathymetry < 100)
+
+data_chunk9_sub2 = subset(data_chunk9_sub, 
+                          data_chunk9_sub$phylum != "Chordata" |
+                            data_chunk9_sub$superclass == "Pisces")
+
+#write.csv(data_chunk9_sub2,file="OBIS_animals_depthless_2001-2010.csv")
+
+
+
+data_chunk10 = occurrence(flags = "NO_DEPTH", verbose = T,   # ? of 72,119,118 records
+                         startdate = "2011-01-01", enddate = "2017-12-31") 
+
+#write.csv(data_chunk10,file="OBIS_data_depthless_2011-2017.csv")
+
+data_chunk10_sub = subset(data_chunk10, 
+                         data_chunk10$marine==T & 
+                           data_chunk10$kingdom == "Animalia" & 
+                           data_chunk10$shoredistance > 0 & 
+                           data_chunk10$shoredistance < 500000 & 
+                           data_chunk10$bathymetry < 100)
+
+data_chunk10_sub2 = subset(data_chunk10_sub, 
+                          data_chunk10_sub$phylum != "Chordata" |
+                            data_chunk10_sub$superclass == "Pisces")
+
+#write.csv(data_chunk10_sub2,file="OBIS_animals_depthless_2011-2017.csv")
+
+
+data_chunk11 = occurrence(flags = "NO_DEPTH", verbose = T,   # ? of 72,119,118 records
+                          startdate = "2018-01-01") 
+
+#write.csv(data_chunk11,file="OBIS_data_depthless_2018-now.csv")
+
+data_chunk11_sub = subset(data_chunk11, 
+                          data_chunk11$marine==T & 
+                            data_chunk11$kingdom == "Animalia" & 
+                            data_chunk11$shoredistance > 0 & 
+                            data_chunk11$shoredistance < 500000 & 
+                            data_chunk11$bathymetry < 100)
+
+data_chunk11_sub2 = subset(data_chunk11_sub, 
+                           data_chunk11_sub$phylum != "Chordata" |
+                             data_chunk11_sub$superclass == "Pisces")
+
+#write.csv(data_chunk11_sub2,file="OBIS_animals_depthless_2018-now.csv")
+
+
+
+
+
+
 
