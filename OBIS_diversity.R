@@ -1,6 +1,6 @@
 ## Combine + synthesize coastal OBIS data
 ## Date created: 23 Mar 2026
-## Date updated: 13 Apr 2026
+## Date updated: 17 Apr 2026
 
 
 # code modified from: https://iobis.github.io/notebook-diversity-indicators/
@@ -12,12 +12,14 @@ library(dplyr)
 library(dggridR) # gridding map data
 library(gsl) # diversity metrics
 library(sf) # mapping
+library(sfExtras) # polygon centroids
 library(rnaturalearth) # mapping
 library(rnaturalearthdata) # mapping
 library(viridis)
+library(scico)
 library(ggplot2)
 #library(rgdal)
-library("worrms") # access WoRMS
+library(worrms) # access WoRMS
 
 
 # test <- open_dataset("OBIS_animals/",format = "csv") %>%
@@ -28,7 +30,25 @@ library("worrms") # access WoRMS
 
 
 occ <- open_dataset("OBIS_animals/",format = "csv") %>%
-  select(decimalLongitude, decimalLatitude, species) %>%
+  select(decimalLongitude, decimalLatitude, species,basisOfRecord,occurrenceStatus,class,phylum) %>%
+  collect() %>%
+  filter_out(basisOfRecord == "FossilSpecimen" | 
+               species == "NA" |
+               class == "Copepoda" |
+               class == "Cephalopoda" |
+               class == "Scyphozoa" |
+               class == "Cubozoa" |
+               class == "Tentaculata" |
+               class == "Nuda" |
+               class == "Appendicularia" |
+               phylum == "Chaetognatha" |
+               phylum == "Chordata" |
+               is.na(species) |
+               occurrenceStatus == "Ausent" | 
+               occurrenceStatus == "Absent" | 
+               occurrenceStatus == "absent" | 
+               occurrenceStatus == "absence" | 
+               occurrenceStatus == "Absence") %>%
   group_by(decimalLongitude, decimalLatitude, species) %>%
   collect() %>%
   summarize(records = n())
@@ -53,6 +73,12 @@ Chaudhary_df_spp_small$ourclass = Chaudhary_df_spp$ourclass
 # }
 #
 #write.csv(test_spp,file="OBIS_animals/species_status.csv")
+
+spp_stat = read.csv("OBIS_animals/species_status.csv")
+spp_stat_NA = subset(spp_stat, is.na(spp_stat$status)==TRUE)
+write.csv(spp_stat_NA,"OBIS_animals/spp_status_manual.csv")
+
+
 
 # Create an ISEA discrete global grid using the dggridR package
 dggs <- dgconstruct(projection = "ISEA", topology = "HEXAGON", res = 8)
@@ -105,7 +131,6 @@ calc <- function(df, esn = 50) {  #defaults to ES50
 }
 
 # Perform the calculation on species level data
-#psystime = function(e){system.time(eval(e))}
 
 occ_noNA = subset(occ, occ$species != "NA")
 
@@ -129,12 +154,34 @@ metrics <- merge(grid_sf, metrics, by.x = "seqnum", by.y = "cell")# %>%
   #                     st_as_sfc("SRID=4326;POLYGON((-180 85,180 85,180 -85,-180 -85,-180 85))"), 
    #                    sparse = FALSE))
 
-test2 <- merge(test, grid_sf, by.x = "cell", by.y = "seqnum") # %>%
+metrics$centroid_lon = NA
+metrics$centroid_lat = NA
+for(i in 1:length(metrics$seqnum)){
+  centroid = st_centroid(metrics[[12]][[i]])
+  metrics$centroid_lon[i] = centroid[1]
+  metrics$centroid_lat[i] = centroid[2]
+}
+
+metrics_csv = as.data.frame(metrics$n)
+colnames(metrics_csv) = c("n")
+metrics_csv$sp = metrics$sp
+metrics_csv$ES50 = metrics$es
+metrics_csv$shannon = metrics$shannon
+metrics_csv$simpson = metrics$simpson
+metrics_csv$maxp = metrics$maxp
+metrics_csv$hill_1 = metrics$hill_1
+metrics_csv$hill_2 = metrics$hill_2
+metrics_csv$hill_inf = metrics$hill_inf
+metrics_csv$centroid_lon = metrics$centroid_lon
+metrics_csv$centroid_lat = metrics$centroid_lat
+#write.csv(metrics_csv,"biodiversity_metrics_draft.csv")
+
+#test2 <- merge(test, grid_sf, by.x = "cell", by.y = "seqnum") # %>%
  # filter(st_intersects(geometry, 
  #                      st_as_sfc("SRID=4326;POLYGON((-180 85,180 85,180 -85,-180 -85,-180 85))"), 
  #                      sparse = FALSE))
 
-test3 = subset(test2, test2$min_year < 1900)
+#test3 = subset(test2, test2$min_year < 1900)
 
 world <- ne_countries(scale = "medium", returnclass = "sf")
 
@@ -159,9 +206,9 @@ ggplot() +
 
 ggplot() +
   geom_sf(data = metrics, aes_string(fill = "es", col="es", geometry = "geometry"),lwd = 0.04) +
-  scale_fill_viridis(option = "inferno", begin = 0.1,#trans = "log10",
+  scale_fill_viridis_b(option = "inferno", begin = 0.1,#trans = "log10",
                      na.value = "white", name = "ES50") +
-  scale_colour_viridis(option = "inferno", begin = 0.1,#trans = "log10",
+  scale_colour_viridis_b(option = "inferno", begin = 0.1,#trans = "log10",
                      na.value = "white", name = "ES50") +
   geom_sf(data = world, fill = "#dddddd", color = "#666666", lwd = 0.1) +
   theme(panel.grid.major.x = element_blank(), 
@@ -180,6 +227,11 @@ ggplot() +
  coord_sf(crs = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
 
 plot(x=log(metrics$n), y=metrics$es)
+
+ggplot(data = metrics, aes(x=centroid_lat,y=es,col=centroid_lon)) + 
+  geom_point() + geom_smooth() + theme_bw() + 
+  scale_color_scico(palette = "vikO")
+
 
 
 
