@@ -1,6 +1,6 @@
 ## Combine + synthesize coastal OBIS data
 ## Date created: 23 Mar 2026
-## Date updated: 17 Apr 2026
+## Date updated: 22 Apr 2026
 
 
 # code modified from: https://iobis.github.io/notebook-diversity-indicators/
@@ -76,12 +76,12 @@ Chaudhary_df_spp_small$ourclass = Chaudhary_df_spp$ourclass
 
 spp_stat = read.csv("OBIS_animals/species_status.csv")
 spp_stat_NA = subset(spp_stat, is.na(spp_stat$status)==TRUE)
-write.csv(spp_stat_NA,"OBIS_animals/spp_status_manual.csv")
+#write.csv(spp_stat_NA,"spp_status_manual.csv")
 
 
 
 # Create an ISEA discrete global grid using the dggridR package
-dggs <- dgconstruct(projection = "ISEA", topology = "HEXAGON", res = 8)
+dggs <- dgconstruct(projection = "ISEA", topology = "HEXAGON", res = 7)
 
 #inf <- dginfo(dggs) #lists all possible resolutions
 
