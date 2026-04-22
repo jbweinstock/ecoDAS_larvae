@@ -1,6 +1,6 @@
 ## Download + subset global OBIS data
 ## Date created: 10 Mar 2026
-## Date updated: 17 Apr 2026
+## Date updated: 22 Apr 2026
 
 
 # download global OBIS data for <100 m (in 1-10 GB chunks, subset by year)
@@ -168,7 +168,7 @@ data_chunk9_sub2 = subset(data_chunk9_sub,
 
 
 
-data_chunk10 = occurrence(flags = "NO_DEPTH", verbose = T,   # ? of 72,119,118 records
+data_chunk10 = occurrence(flags = "NO_DEPTH", verbose = T,   # 16,537,378 of 72,119,118 records
                          startdate = "2011-01-01", enddate = "2017-12-31") 
 
 #write.csv(data_chunk10,file="OBIS_data_depthless_2011-2017.csv")
@@ -187,10 +187,10 @@ data_chunk10_sub2 = subset(data_chunk10_sub,
 #write.csv(data_chunk10_sub2,file="OBIS_animals_depthless_2011-2017.csv")
 
 
-data_chunk11 = occurrence(flags = "NO_DEPTH", verbose = T,   # ? of 72,119,118 records
-                          startdate = "2018-01-01") 
+data_chunk11 = occurrence(flags = "NO_DEPTH", verbose = T,   # 15,468,998 of 72,119,118 records
+                          startdate = "2018-01-01") # ~5,000,000 still unaccounted for (no date?)
 
-#write.csv(data_chunk11,file="OBIS_data_depthless_2018-now.csv")
+#write.csv(data_chunk11,file="OBIS_100m/OBIS_data_depthless_2018-APR2026.csv")
 
 data_chunk11_sub = subset(data_chunk11, 
                           data_chunk11$marine==T & 
@@ -203,7 +203,7 @@ data_chunk11_sub2 = subset(data_chunk11_sub,
                            data_chunk11_sub$phylum != "Chordata" |
                              data_chunk11_sub$superclass == "Pisces")
 
-#write.csv(data_chunk11_sub2,file="OBIS_animals_depthless_2018-now.csv")
+#write.csv(data_chunk11_sub2,file="OBIS_animals/OBIS_animals_depthless_2018-APR2026.csv")
 
 
 
