@@ -1,6 +1,6 @@
 ## Combine + synthesize coastal OBIS data
 ## Date created: 23 Mar 2026
-## Date updated: 22 Apr 2026
+## Date updated: 28 Apr 2026
 
 
 # code modified from: https://iobis.github.io/notebook-diversity-indicators/
@@ -29,29 +29,36 @@ library(worrms) # access WoRMS
 #   summarize(min_year = min(date_year),max_year = max(date_year))
 
 
-occ <- open_dataset("OBIS_animals/",format = "csv") %>%
-  select(decimalLongitude, decimalLatitude, species,basisOfRecord,occurrenceStatus,class,phylum) %>%
+occt <- open_dataset("OBIS_animals/",format = "csv") %>%
+  select(decimalLongitude, decimalLatitude, species,basisOfRecord,
+         occurrenceStatus,class,phylum,order,superfamily,organismQuantity) %>%
   collect() %>%
   filter_out(basisOfRecord == "FossilSpecimen" | 
                species == "NA" |
-               class == "Copepoda" |
-               class == "Cephalopoda" |
-               class == "Scyphozoa" |
-               class == "Cubozoa" |
-               class == "Tentaculata" |
-               class == "Nuda" |
-               class == "Appendicularia" |
-               phylum == "Chaetognatha" |
-               phylum == "Chordata" |
+               class == "Copepoda" | #remove copepods (holoplankton)
+               class == "Ostracoda" |  #remove ostracods (holoplankton)
+               class == "Cephalopoda" |  #remove cephalopods
+               order == "Pteropoda" |  #remove pteropods (holoplankton)
+               order == "Salpida" |  #remove salps (holoplankton)
+               class == "Scyphozoa" |  #remove jellyfish
+               class == "Cubozoa" |  #remove box jellyfish 
+               phylum == "Ctenophora" |  #remove comb jellyfish
+               class == "Appendicularia" |  #remove larvaceans (holoplankton)
+               phylum == "Chaetognatha" |  #remove chaetognaths (holoplankton)
+               phylum == "Chordata" |  #remove fish
+               superfamily == "Pterotracheoidea" | # removes heteropods (holoplankton)
                is.na(species) |
                occurrenceStatus == "Ausent" | 
                occurrenceStatus == "Absent" | 
                occurrenceStatus == "absent" | 
                occurrenceStatus == "absence" | 
-               occurrenceStatus == "Absence") %>%
+               occurrenceStatus == "Absence" |
+               occurrenceStatus == "not observed" |
+               occurrenceStatus == "Dead") %>%
   group_by(decimalLongitude, decimalLatitude, species) %>%
   collect() %>%
   summarize(records = n())
+
 
 Chaudhary_df = read.csv("occurence_records.csv")
 Chaudhary_df_spp = Chaudhary_df[!duplicated(Chaudhary_df$ValidName),]
@@ -59,11 +66,11 @@ Chaudhary_df_spp_small = as.data.frame(Chaudhary_df_spp$ValidName)
 colnames(Chaudhary_df_spp_small) = c("ValidName")
 Chaudhary_df_spp_small$ourclass = Chaudhary_df_spp$ourclass
 
-# test = merge(occ, Chaudhary_df_spp_small, 
-#              by.x = "species", by.y = "ValidName", all.x=TRUE)
-# 
-# test_spp = test[!duplicated(test$species),]
-# 
+test = merge(occ, Chaudhary_df_spp_small,
+             by.x = "species", by.y = "ValidName", all.x=TRUE)
+
+test_spp = test[!duplicated(test$species),]
+
 # test_spp$status = NA
 # for(i in 1:length(test_spp$status)){
 #   tryCatch({
@@ -74,10 +81,52 @@ Chaudhary_df_spp_small$ourclass = Chaudhary_df_spp$ourclass
 #
 #write.csv(test_spp,file="OBIS_animals/species_status.csv")
 
-spp_stat = read.csv("OBIS_animals/species_status.csv")
-spp_stat_NA = subset(spp_stat, is.na(spp_stat$status)==TRUE)
-#write.csv(spp_stat_NA,"spp_status_manual.csv")
+spp_status = read.csv("species_status.csv")
 
+test_spp = merge(test_spp, spp_status,
+                 by = "species", all.x=TRUE)
+test_spp = test_spp[,-(2:3)]; test_spp = test_spp[,-(4:7)]; test_spp = test_spp[,-4]
+
+spp_stat_NA = subset(test_spp, is.na(test_spp$status)==TRUE)
+
+totals = test_spp %>%
+  group_by(status) %>%
+  tally()
+
+# for(i in 1:length(spp_stat_NA$status)){
+#   tryCatch({
+#     spp_stat_NA$status[i] = wm_records_name(spp_stat_NA$species[i],fuzzy=FALSE)$status
+#   },
+#   error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+# }
+
+test_sppp = merge(test_spp, spp_stat_NA,
+                 by = "species", all.x=TRUE)
+
+test_sppp$status = NA
+test_sppp$status = ifelse(is.na(test_sppp$status.x) == TRUE,
+                          yes = test_sppp$status.y,
+                          no = test_sppp$status.x)
+
+totals_new = test_sppp %>%
+  group_by(status) %>%
+  tally()
+
+#write.csv(test_sppp, file = "species_status_v2.csv")
+
+unaccepted_spp = subset(test_sppp, test_sppp$status != "accepted" & is.na(test_sppp$status) == FALSE)
+NA_spp = subset(test_sppp, is.na(test_sppp$status) == TRUE)
+#write.csv(NA_spp, file = "species_status_manual_v2.csv")
+
+unaccepted_spp$accepted_name = NA
+for(i in 1:length(unaccepted_spp$accepted_name)){
+  worms = wm_records_name(unaccepted_spp$species[i],fuzzy=FALSE)
+  if(length(worms$status) == 1 & 
+     worms$status == unaccepted_spp$status[i] & 
+     worms$scientificname == unaccepted_spp$species[i]){
+    unaccepted_spp$accepted_name[i] = worms$valid_name
+  }
+}
 
 
 # Create an ISEA discrete global grid using the dggridR package
@@ -268,8 +317,17 @@ ggplot(data = metrics, aes_string(x = "n")) +
 
 
 
+## testing ecoregion data
 
+ecoregions = read_sf("Ecoregions/01_Data/WCMC-036-MEOW-PPOW-2007-2012.shp")
 
+coastal_ecoregions = subset(ecoregions, ecoregions$TYPE == "MEOW")
 
-
+ggplot(coastal_ecoregions) +
+  geom_sf(aes_string(fill = "REALM", color = "REALM", geometry = "geometry"), 
+          lwd = 0.04) +
+  theme_bw() +
+  xlab("") + ylab("") +
+  coord_sf(crs = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" )
+  
 
