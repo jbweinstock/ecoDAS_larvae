@@ -1,6 +1,6 @@
 ## Combine + synthesize coastal OBIS data
 ## Date created: 23 Mar 2026
-## Date updated: 28 Apr 2026
+## Date updated: 29 Apr 2026
 
 
 # code modified from: https://iobis.github.io/notebook-diversity-indicators/
@@ -29,17 +29,23 @@ library(worrms) # access WoRMS
 #   summarize(min_year = min(date_year),max_year = max(date_year))
 
 
-occt <- open_dataset("OBIS_animals/",format = "csv") %>%
-  select(decimalLongitude, decimalLatitude, species,basisOfRecord,
-         occurrenceStatus,class,phylum,order,superfamily,organismQuantity) %>%
+occ <- open_dataset("OBIS_animals/",format = "csv") %>%
+  select(decimalLongitude, decimalLatitude, genus, species,basisOfRecord,
+         occurrenceStatus,class,phylum,order,suborder,superfamily,organismQuantity) %>%
   collect() %>%
   filter_out(basisOfRecord == "FossilSpecimen" | 
                species == "NA" |
                class == "Copepoda" | #remove copepods (holoplankton)
                class == "Ostracoda" |  #remove ostracods (holoplankton)
+               class == "Branchiopoda" | # (holoplankton)
                class == "Cephalopoda" |  #remove cephalopods
+               genus == "Janthina" | #remove holoplanktonic snails
+               order == "Mysida" | #remove mysids (holoplankton)
+               order == "Euphausiacea" | #remove krill (holoplankton)
+               suborder == "Hyperiidea" | #remove holoplanktonic amphipods
                order == "Pteropoda" |  #remove pteropods (holoplankton)
                order == "Salpida" |  #remove salps (holoplankton)
+               order == "Siphonophorae" | #remove siphonophores (holoplankton)
                class == "Scyphozoa" |  #remove jellyfish
                class == "Cubozoa" |  #remove box jellyfish 
                phylum == "Ctenophora" |  #remove comb jellyfish
@@ -59,6 +65,7 @@ occt <- open_dataset("OBIS_animals/",format = "csv") %>%
   collect() %>%
   summarize(records = n())
 
+spp_num = occ[!duplicated(occ$species),] # 58766 benthic spp
 
 Chaudhary_df = read.csv("occurence_records.csv")
 Chaudhary_df_spp = Chaudhary_df[!duplicated(Chaudhary_df$ValidName),]
@@ -66,7 +73,7 @@ Chaudhary_df_spp_small = as.data.frame(Chaudhary_df_spp$ValidName)
 colnames(Chaudhary_df_spp_small) = c("ValidName")
 Chaudhary_df_spp_small$ourclass = Chaudhary_df_spp$ourclass
 
-test = merge(occ, Chaudhary_df_spp_small,
+test = merge(spp_num, Chaudhary_df_spp_small,
              by.x = "species", by.y = "ValidName", all.x=TRUE)
 
 test_spp = test[!duplicated(test$species),]
@@ -90,7 +97,7 @@ test_spp = test_spp[,-(2:3)]; test_spp = test_spp[,-(4:7)]; test_spp = test_spp[
 spp_stat_NA = subset(test_spp, is.na(test_spp$status)==TRUE)
 
 totals = test_spp %>%
-  group_by(status) %>%
+  group_by(ourclass) %>%
   tally()
 
 # for(i in 1:length(spp_stat_NA$status)){
@@ -121,12 +128,18 @@ NA_spp = subset(test_sppp, is.na(test_sppp$status) == TRUE)
 unaccepted_spp$accepted_name = NA
 for(i in 1:length(unaccepted_spp$accepted_name)){
   worms = wm_records_name(unaccepted_spp$species[i],fuzzy=FALSE)
-  if(length(worms$status) == 1 & 
-     worms$status == unaccepted_spp$status[i] & 
-     worms$scientificname == unaccepted_spp$species[i]){
-    unaccepted_spp$accepted_name[i] = worms$valid_name
+  
+  if(length(worms$status) == 1){
+    if(worms$status == unaccepted_spp$status[i] & 
+       worms$scientificname == unaccepted_spp$species[i]){
+      unaccepted_spp$accepted_name[i] = worms$valid_name
+      }
+    }
+  if(length(worms$status) > 1){
+    unaccepted_spp$accepted_name[i] = NA
   }
 }
+#write.csv(unaccepted_spp, file = "species_status_manual_unacc.csv")
 
 
 # Create an ISEA discrete global grid using the dggridR package
@@ -136,7 +149,6 @@ dggs <- dgconstruct(projection = "ISEA", topology = "HEXAGON", res = 7)
 
 # assign cell numbers to the occurrence data -- replaced dgtransform with dgGEO_to_SEQNUM
 occ$cell <- dgGEO_to_SEQNUM(dggs, occ$decimalLongitude,occ$decimalLatitude)$seqnum
-#test$cell <- dgGEO_to_SEQNUM(dggs,test$decimalLongitude,test$decimalLatitude)$seqnum
 
 
 # calculate the number of records, species richness, Simpson index, 
@@ -187,9 +199,6 @@ occ_noNA = subset(occ, occ$species != "NA")
 metrics <- occ_noNA %>%
   calc(50)
 
-#test <- test %>%
-#  group_by(cell) %>%
-#  summarize(min_year = min(min_year),max_year = max(max_year))
 
 # add cell geometries to the metrics table
 grid <- dgearthgrid(dggs) #, frame = FALSE, wrapcells = FALSE)
@@ -210,6 +219,26 @@ for(i in 1:length(metrics$seqnum)){
   metrics$centroid_lon[i] = centroid[1]
   metrics$centroid_lat[i] = centroid[2]
 }
+
+ecoregions = sf::st_read(system.file("Ecoregions/01_Data/WCMC-036-MEOW-PPOW-2007-2012.shp", 
+                        package ="sf")) %>% 
+  sf::st_transform(4326) # because WGS84 is a good default
+coastal_ecoregions = subset(ecoregions, ecoregions$TYPE == "MEOW")
+coastal_ecoregions_small = coastal_ecoregions[,2]
+
+points <- data.frame(x = metrics$centroid_lon,
+                     y = metrics$centroid_lat) %>% 
+  sf::st_as_sf(coords = c("x","y"), crs=4326) # transform to sf object & WGS84 CRS
+
+sf_use_s2(FALSE) #throws error otherwise
+metrics$MEOW = NA
+metrics$MEOW_near = NA
+metrics$MEOW = st_join(points, coastal_ecoregions_small,join=st_within)$REALM
+metrics$MEOW_near = st_join(points, coastal_ecoregions_small,join=st_nearest_feature)$REALM
+
+totals_new = metrics %>%
+  group_by(MEOW_near) %>%
+  tally()
 
 metrics_csv = as.data.frame(metrics$n)
 colnames(metrics_csv) = c("n")
@@ -232,7 +261,51 @@ metrics_csv$centroid_lat = metrics$centroid_lat
 
 #test3 = subset(test2, test2$min_year < 1900)
 
+
+
+## plotting ecoregion data to make sure it looks OK
+
+sf_use_s2(TRUE)
 world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# define a long & slim polygon that overlaps the meridian line & set its CRS to match that of world
+polygon <- st_polygon(x = list(rbind(c(-0.0001, 90),
+                                     c(0, 90),
+                                     c(0, -90),
+                                     c(-0.0001, -90),
+                                     c(-0.0001, 90)))) %>%
+  st_sfc() %>%
+  st_set_crs(4326)
+
+# modify world dataset to remove overlapping portions with world's polygons
+world2 <- world %>% st_difference(polygon)
+
+# perform transformation on modified version of world dataset
+world_robinson <- st_transform(world2, 
+                               crs = '+proj=robin +lon_0=180 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs')
+
+
+ggplot() +
+  geom_sf(data = world_robinson, fill = "#dddddd", color = "#666666", lwd = 0.1) +
+  geom_sf(data = coastal_ecoregions,
+          aes_string(fill = "REALM", color = "REALM", geometry = "geometry"), 
+          lwd = 0.04) +
+  theme_bw() + xlab("") + ylab("") +
+  coord_sf(crs = "+proj=robin +lon_0=180 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
+#  coord_sf()
+
+ggplot() +
+  geom_sf(data = metrics, 
+          aes_string(fill = "MEOW_near",geometry = "geometry"),
+          lwd = 0.04) +
+  geom_sf(data = world, fill = "#dddddd", color = "#666666", lwd = 0.1) +
+  theme_bw() + xlab("") + ylab("") +
+  coord_sf(crs = "+proj=robin +lon_0=180 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
+#  coord_sf()
+
+ggplot(metrics, aes(x=centroid_lat,y=es))+
+  geom_point(aes(col=MEOW_near)) + geom_smooth() + theme_bw()
+
 
 # create a bounding box for the Robinson projection
 robinson <- CRS("+proj=robin +over")
@@ -245,12 +318,24 @@ bb <- sf::st_union(sf::st_make_grid(
 bb_robinson <- st_transform(bb, as.character(robinson))
 
 ggplot() +
-  geom_sf(data = test3, aes_string(fill = "min_year", geometry = "geometry"), lwd = 0,col=NA) +
-  scale_fill_viridis(option = "inferno", na.value = "white", 
-                     name = "min year") +
-                     #breaks=c(1800,1900,1950,1975,1990,2000)) +
+  geom_sf(data = metrics, aes_string(fill = "es", col="es", geometry = "geometry"),lwd = 0.04) +
+  scale_fill_viridis_b(option = "inferno", begin = 0.1,#trans = "log10",
+                       na.value = "white", name = "ES50") +
+  scale_colour_viridis_b(option = "inferno", begin = 0.1,#trans = "log10",
+                         na.value = "white", name = "ES50") +
+  geom_point(data = metrics, aes(x=centroid_lon,y=centroid_lat)) +
   geom_sf(data = world, fill = "#dddddd", color = NA) +
-  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_blank(), panel.grid.minor.x = element_blank(), panel.grid.minor.y = element_blank(), panel.background = element_blank(), axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank(), axis.title.x = element_blank(), axis.title.y = element_blank()) + xlab("") + ylab("") +
+  theme(panel.grid.major.x = element_blank(), 
+        panel.grid.major.y = element_blank(), 
+        panel.grid.minor.x = element_blank(), 
+        panel.grid.minor.y = element_blank(), 
+        panel.background = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.text.y = element_blank(), 
+        axis.ticks = element_blank(), 
+        axis.title.x = element_blank(), 
+        axis.title.y = element_blank()) + 
+  xlab("") + ylab("") +
   coord_sf()
 
 ggplot() +
@@ -316,18 +401,4 @@ ggplot(data = metrics, aes_string(x = "n")) +
   ggtitle("Distribution of records")
 
 
-
-## testing ecoregion data
-
-ecoregions = read_sf("Ecoregions/01_Data/WCMC-036-MEOW-PPOW-2007-2012.shp")
-
-coastal_ecoregions = subset(ecoregions, ecoregions$TYPE == "MEOW")
-
-ggplot(coastal_ecoregions) +
-  geom_sf(aes_string(fill = "REALM", color = "REALM", geometry = "geometry"), 
-          lwd = 0.04) +
-  theme_bw() +
-  xlab("") + ylab("") +
-  coord_sf(crs = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" )
-  
 
