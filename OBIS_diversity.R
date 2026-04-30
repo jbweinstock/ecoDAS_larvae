@@ -1,6 +1,6 @@
 ## Combine + synthesize coastal OBIS data
 ## Date created: 23 Mar 2026
-## Date updated: 29 Apr 2026
+## Date updated: 30 Apr 2026
 
 
 # code modified from: https://iobis.github.io/notebook-diversity-indicators/
@@ -64,6 +64,8 @@ occ <- open_dataset("OBIS_animals/",format = "csv") %>%
   group_by(decimalLongitude, decimalLatitude, species) %>%
   collect() %>%
   summarize(records = n())
+
+occ$decimalLongitude_shifted = occ$decimalLongitude + 180
 
 spp_num = occ[!duplicated(occ$species),] # 58766 benthic spp
 
@@ -193,10 +195,10 @@ calc <- function(df, esn = 50) {  #defaults to ES50
 
 # Perform the calculation on species level data
 
-occ_noNA = subset(occ, occ$species != "NA")
+#occ_noNA = subset(occ, occ$species != "NA")
 
 
-metrics <- occ_noNA %>%
+metrics <- occ %>%
   calc(50)
 
 
@@ -207,21 +209,46 @@ grid_sf <- grid %>%
   st_wrap_dateline(options = c("WRAPDATELINE=YES", "DATELINEOFFSET=230"))
 grid_sf$cell <- names(grid)
 
-metrics <- merge(grid_sf, metrics, by.x = "seqnum", by.y = "cell")# %>%
- # filter(st_intersects(geometry, 
-  #                     st_as_sfc("SRID=4326;POLYGON((-180 85,180 85,180 -85,-180 -85,-180 85))"), 
-   #                    sparse = FALSE))
+metrics <- merge(grid_sf, metrics, by.x = "seqnum", by.y = "cell") #%>%
+#  filter(st_intersects(geometry, 
+#                       st_as_sfc("SRID=4326;POLYGON((-180 85,180 85,180 -85,-180 -85,-180 85))"), 
+#                       sparse = FALSE))
 
 metrics$centroid_lon = NA
 metrics$centroid_lat = NA
 for(i in 1:length(metrics$seqnum)){
-  centroid = st_centroid(metrics[[12]][[i]])
+  #centroid = st_centroid(metrics[[12]][[i]])
+  
+  centroid = metrics$geometry[i] %>% 
+    st_cast('MULTIPOLYGON') %>%
+    st_cast('POLYGON') %>%
+    as('Spatial') %>%
+    centroid()
+  
   metrics$centroid_lon[i] = centroid[1]
   metrics$centroid_lat[i] = centroid[2]
+  
+  if(metrics$centroid_lon[i] > 175 ){
+    centroidd = metrics$geometry[i] %>% 
+      st_cast('POLYGON') %>%
+      st_shift_longitude() %>% 
+      rmapshaper::ms_dissolve() %>% 
+      as('Spatial') %>%
+      centroid() 
+ 
+    metrics$centroid_lon[i] = centroidd[1]
+    metrics$centroid_lat[i] = centroidd[2]
+  }
+  if(metrics$centroid_lon[i] > 180){
+    metrics$centroid_lon[i] = (360 - metrics$centroid_lon[i]) * (-1)
+  }
+  if(metrics$centroid_lon[i] <= 180){
+    metrics$centroid_lon[i] = metrics$centroid_lon[i]
+  }
 }
 
-ecoregions = sf::st_read(system.file("Ecoregions/01_Data/WCMC-036-MEOW-PPOW-2007-2012.shp", 
-                        package ="sf")) %>% 
+
+ecoregions = read_sf("Ecoregions/01_Data/WCMC-036-MEOW-PPOW-2007-2012.shp") %>%
   sf::st_transform(4326) # because WGS84 is a good default
 coastal_ecoregions = subset(ecoregions, ecoregions$TYPE == "MEOW")
 coastal_ecoregions_small = coastal_ecoregions[,2]
@@ -235,6 +262,7 @@ metrics$MEOW = NA
 metrics$MEOW_near = NA
 metrics$MEOW = st_join(points, coastal_ecoregions_small,join=st_within)$REALM
 metrics$MEOW_near = st_join(points, coastal_ecoregions_small,join=st_nearest_feature)$REALM
+
 
 totals_new = metrics %>%
   group_by(MEOW_near) %>%
@@ -286,21 +314,21 @@ world_robinson <- st_transform(world2,
 
 
 ggplot() +
-  geom_sf(data = world_robinson, fill = "#dddddd", color = "#666666", lwd = 0.1) +
+  geom_sf(data = world, fill = "#dddddd", color = "#666666", lwd = 0.1) +
   geom_sf(data = coastal_ecoregions,
           aes_string(fill = "REALM", color = "REALM", geometry = "geometry"), 
           lwd = 0.04) +
   theme_bw() + xlab("") + ylab("") +
-  coord_sf(crs = "+proj=robin +lon_0=180 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
+  coord_sf(crs = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
 #  coord_sf()
 
 ggplot() +
   geom_sf(data = metrics, 
           aes_string(fill = "MEOW_near",geometry = "geometry"),
-          lwd = 0.04) +
+          lwd = 0.04,alpha=0.5) +
   geom_sf(data = world, fill = "#dddddd", color = "#666666", lwd = 0.1) +
-  theme_bw() + xlab("") + ylab("") +
-  coord_sf(crs = "+proj=robin +lon_0=180 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
+  theme_bw() + xlab("") + ylab("") + 
+  coord_sf(crs = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
 #  coord_sf()
 
 ggplot(metrics, aes(x=centroid_lat,y=es))+
@@ -318,13 +346,13 @@ bb <- sf::st_union(sf::st_make_grid(
 bb_robinson <- st_transform(bb, as.character(robinson))
 
 ggplot() +
-  geom_sf(data = metrics, aes_string(fill = "es", col="es", geometry = "geometry"),lwd = 0.04) +
-  scale_fill_viridis_b(option = "inferno", begin = 0.1,#trans = "log10",
-                       na.value = "white", name = "ES50") +
-  scale_colour_viridis_b(option = "inferno", begin = 0.1,#trans = "log10",
-                         na.value = "white", name = "ES50") +
-  geom_point(data = metrics, aes(x=centroid_lon,y=centroid_lat)) +
   geom_sf(data = world, fill = "#dddddd", color = NA) +
+  geom_sf(data = metrics, aes_string(col = "shannon", geometry = "geometry"),fill=NA,lwd = 1) +
+#  scale_fill_viridis_b(option = "inferno", begin = 0.1,#trans = "log10",
+#                       na.value = "white", name = "ES50") +
+  scale_colour_viridis_b(option = "inferno", begin = 0.1,#trans = "log10",
+                         na.value = NA, name = "ES50") +
+  geom_point(data = metrics, aes(x=centroid_lon,y=centroid_lat)) +
   theme(panel.grid.major.x = element_blank(), 
         panel.grid.major.y = element_blank(), 
         panel.grid.minor.x = element_blank(), 
