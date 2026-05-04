@@ -1,6 +1,6 @@
 ## Combine + synthesize coastal OBIS data
 ## Date created: 23 Mar 2026
-## Date updated: 30 Apr 2026
+## Date updated: 04 May 2026
 
 
 # code modified from: https://iobis.github.io/notebook-diversity-indicators/
@@ -16,8 +16,9 @@ library(sfExtras) # polygon centroids
 library(rnaturalearth) # mapping
 library(rnaturalearthdata) # mapping
 library(viridis)
-library(scico)
+library(scico) # circular color schemes
 library(ggplot2)
+library(geosphere) #centroid
 #library(rgdal)
 library(worrms) # access WoRMS
 
@@ -65,7 +66,7 @@ occ <- open_dataset("OBIS_animals/",format = "csv") %>%
   collect() %>%
   summarize(records = n())
 
-occ$decimalLongitude_shifted = occ$decimalLongitude + 180
+#occ$decimalLongitude_shifted = occ$decimalLongitude + 180
 
 spp_num = occ[!duplicated(occ$species),] # 58766 benthic spp
 
@@ -268,6 +269,12 @@ totals_new = metrics %>%
   group_by(MEOW_near) %>%
   tally()
 
+metrics = metrics %>% 
+  filter_out(metrics$centroid_lat > 31 &
+               metrics$centroid_lat < 51 & 
+               metrics$centroid_lon > 45 & 
+               metrics$centroid_lon < 55) # remove Caspian Sea points
+
 metrics_csv = as.data.frame(metrics$n)
 colnames(metrics_csv) = c("n")
 metrics_csv$sp = metrics$sp
@@ -280,7 +287,8 @@ metrics_csv$hill_2 = metrics$hill_2
 metrics_csv$hill_inf = metrics$hill_inf
 metrics_csv$centroid_lon = metrics$centroid_lon
 metrics_csv$centroid_lat = metrics$centroid_lat
-#write.csv(metrics_csv,"biodiversity_metrics_draft.csv")
+metrics_csv$ecorealm = metrics$MEOW_near
+#write.csv(metrics_csv,"biodiversity_metrics_04May26.csv")
 
 #test2 <- merge(test, grid_sf, by.x = "cell", by.y = "seqnum") # %>%
  # filter(st_intersects(geometry, 
@@ -325,11 +333,11 @@ ggplot() +
 ggplot() +
   geom_sf(data = metrics, 
           aes_string(fill = "MEOW_near",geometry = "geometry"),
-          lwd = 0.04,alpha=0.5) +
+          lwd = 0.04,alpha=0.9) +
   geom_sf(data = world, fill = "#dddddd", color = "#666666", lwd = 0.1) +
   theme_bw() + xlab("") + ylab("") + 
-  coord_sf(crs = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
-#  coord_sf()
+#  coord_sf(crs = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
+  coord_sf()
 
 ggplot(metrics, aes(x=centroid_lat,y=es))+
   geom_point(aes(col=MEOW_near)) + geom_smooth() + theme_bw()
@@ -347,7 +355,7 @@ bb_robinson <- st_transform(bb, as.character(robinson))
 
 ggplot() +
   geom_sf(data = world, fill = "#dddddd", color = NA) +
-  geom_sf(data = metrics, aes_string(col = "shannon", geometry = "geometry"),fill=NA,lwd = 1) +
+  geom_sf(data = metrics, aes_string(col = "es", geometry = "geometry"),fill=NA,lwd = 1) +
 #  scale_fill_viridis_b(option = "inferno", begin = 0.1,#trans = "log10",
 #                       na.value = "white", name = "ES50") +
   scale_colour_viridis_b(option = "inferno", begin = 0.1,#trans = "log10",
@@ -369,9 +377,9 @@ ggplot() +
 ggplot() +
   geom_sf(data = metrics, aes_string(fill = "es", col="es", geometry = "geometry"),lwd = 0.04) +
   scale_fill_viridis_b(option = "inferno", begin = 0.1,#trans = "log10",
-                     na.value = "white", name = "ES50") +
+                     na.value = NA, name = "ES50") +
   scale_colour_viridis_b(option = "inferno", begin = 0.1,#trans = "log10",
-                     na.value = "white", name = "ES50") +
+                     na.value = NA, name = "ES50") +
   geom_sf(data = world, fill = "#dddddd", color = "#666666", lwd = 0.1) +
   theme(panel.grid.major.x = element_blank(), 
         panel.grid.major.y = element_blank(), 
